@@ -1,0 +1,29 @@
+[package]
+name = "pdfjiff-desktop"
+version = "0.1.0"
+description = "Local, native desktop interface for PDFJiff"
+authors = ["PDFJiff contributors"]
+edition = "2021"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pdfjiff/pdfjiff-desktop"
+
+[lib]
+name = "pdfjiff_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+pdfjiff-core = { git = "https://github.com/pdfjiff/pdfjiff", rev = "9703b26106b25194c86d70f427670324a3edcb49" }
+serde = { version = "1.0", features = ["derive"] }
+same-file = "1.0.6"
+tauri = { version = "2.11.6", features = [] }
+tauri-plugin-dialog = "2.7.3"
+tempfile = "3.23"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+
+[workspace]
