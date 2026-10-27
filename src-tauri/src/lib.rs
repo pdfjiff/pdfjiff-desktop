@@ -2,7 +2,7 @@ use pdfjiff_core::{
     compress::{try_compress, CompressOptions, CompressionPreset},
     inspect,
     pages::PdfMerger,
-    Inspection,
+    Inspection, Orientation, PageSize, PdfBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -77,6 +77,19 @@ struct MergeRequest {
     allow_structure_loss: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageToPdfRequest {
+    inputs: Vec<String>,
+    output: String,
+    overwrite: bool,
+    page_size: String,
+    orientation: String,
+    margin_mm: f32,
+    dpi: f32,
+    recompress_quality: u8,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OperationResponse {
@@ -118,6 +131,12 @@ fn capabilities() -> CapabilitiesResponse {
                 "Combine PDFs in an explicit order",
                 true,
             ),
+            capability(
+                "image.to_pdf",
+                "Images to PDF",
+                "Create an ordered PDF from JPG, JPEG, JFIF, PNG or WebP images",
+                true,
+            ),
         ],
         planned: vec![
             capability("pdf.split", "Split", "Split by page or range", false),
@@ -127,7 +146,7 @@ fn capabilities() -> CapabilitiesResponse {
                 "Select, reorder, delete and rotate pages",
                 false,
             ),
-            capability("convert", "Convert", "PDF and image conversion", false),
+            capability("pdf.to_image", "PDF to images", "Export PDF pages as images", false),
             capability("ocr", "OCR", "Searchable text for scanned documents", false),
         ],
     }
@@ -166,6 +185,13 @@ async fn merge_pdfs(request: MergeRequest) -> Result<OperationResponse, String> 
     tauri::async_runtime::spawn_blocking(move || merge_impl(request))
         .await
         .map_err(|error| format!("Merge task stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+async fn images_to_pdf(request: ImageToPdfRequest) -> Result<OperationResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || images_to_pdf_impl(request))
+        .await
+        .map_err(|error| format!("Image conversion task stopped unexpectedly: {error}"))?
 }
 
 fn inspect_path(path: &Path) -> Result<InspectionResponse, String> {
@@ -383,6 +409,82 @@ fn merge_impl(request: MergeRequest) -> Result<OperationResponse, String> {
     })
 }
 
+fn images_to_pdf_impl(request: ImageToPdfRequest) -> Result<OperationResponse, String> {
+    let started = Instant::now();
+    if request.inputs.is_empty() {
+        return Err("Choose at least one JPG, JPEG, JFIF, PNG or WebP image.".into());
+    }
+    if !request.margin_mm.is_finite() || !(0.0..=100.0).contains(&request.margin_mm) {
+        return Err("Margin must be between 0 and 100 mm.".into());
+    }
+    if !request.dpi.is_finite() || !(18.0..=1200.0).contains(&request.dpi) {
+        return Err("DPI must be between 18 and 1200.".into());
+    }
+    if request.recompress_quality > 100 {
+        return Err("Image quality must be between 0 and 100.".into());
+    }
+    let page_size = match request.page_size.as_str() {
+        "fit" => PageSize::FitToImage,
+        "a4" => PageSize::A4,
+        "letter" => PageSize::Letter,
+        _ => return Err("Choose Fit to image, A4, or Letter page size.".into()),
+    };
+    let orientation = match request.orientation.as_str() {
+        "auto" => Orientation::Auto,
+        "portrait" => Orientation::Portrait,
+        "landscape" => Orientation::Landscape,
+        _ => return Err("Choose automatic, portrait, or landscape orientation.".into()),
+    };
+    let inputs: Vec<PathBuf> = request.inputs.iter().map(PathBuf::from).collect();
+    let output = PathBuf::from(&request.output);
+    validate_output(&output, &inputs, request.overwrite)?;
+
+    let mut builder = PdfBuilder::try_new(
+        page_size,
+        orientation,
+        request.margin_mm,
+        request.dpi,
+        request.recompress_quality,
+    )?;
+    let mut total_bytes = 0u64;
+    for input in &inputs {
+        let data = read_limited(input, MAX_INPUT_BYTES)?;
+        total_bytes = total_bytes
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| "The selected images are too large.".to_string())?;
+        if total_bytes > MAX_MERGE_BYTES {
+            return Err("The selected images exceed the 256 MiB total limit.".into());
+        }
+        builder.try_add_image(&data).map_err(|error| {
+            format!(
+                "Could not add {}. Use JPG, JPEG, JFIF, PNG or WebP: {error}",
+                display_name(input)
+            )
+        })?;
+    }
+    let bytes = builder.try_finish()?;
+    let output_info =
+        inspect(&bytes).map_err(|error| format!("Generated PDF did not validate: {error}"))?;
+    let page_count = inputs.len() as u32;
+    if output_info.page_count != Some(page_count) {
+        return Err("Generated PDF has an unexpected page count; no output was written.".into());
+    }
+    atomic_write(&output, &bytes, request.overwrite)?;
+    Ok(OperationResponse {
+        operation: "image.to_pdf",
+        output: output.to_string_lossy().into_owned(),
+        input_bytes: total_bytes,
+        output_bytes: bytes.len() as u64,
+        page_count,
+        elapsed_ms: started.elapsed().as_millis(),
+        saved_ratio: None,
+        attempts: None,
+        images_recompressed: None,
+        images_downsampled: None,
+        warnings: Vec::new(),
+    })
+}
+
 fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     let metadata = fs::metadata(path)
         .map_err(|error| format!("Could not read {}: {error}", display_name(path)))?;
@@ -472,7 +574,8 @@ pub fn run() {
             capabilities,
             inspect_file,
             compress_pdf,
-            merge_pdfs
+            merge_pdfs,
+            images_to_pdf
         ])
         .run(tauri::generate_context!())
         .expect("failed to run PDFJiff");
@@ -482,9 +585,7 @@ pub fn run() {
 mod tests {
     use super::*;
     use image::{ImageEncoder, RgbImage};
-    use pdfjiff_core::{Orientation, PageSize, PdfBuilder};
-
-    fn sample_pdf(width: u32, height: u32) -> Vec<u8> {
+    fn sample_jpeg(width: u32, height: u32) -> Vec<u8> {
         let mut bitmap = RgbImage::new(width, height);
         for (x, y, pixel) in bitmap.enumerate_pixels_mut() {
             *pixel = image::Rgb([(x % 255) as u8, (y % 255) as u8, 140]);
@@ -498,10 +599,29 @@ mod tests {
                 image::ExtendedColorType::Rgb8,
             )
             .expect("encode jpeg");
+        jpeg
+    }
+
+    fn sample_jfif(width: u32, height: u32) -> Vec<u8> {
+        let mut jpeg = sample_jpeg(width, height);
+        if !jpeg.windows(5).any(|bytes| bytes == b"JFIF\0") {
+            let app0 = [
+                0xff, 0xe0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0,
+                0,
+            ];
+            jpeg.splice(2..2, app0);
+        }
+        assert!(jpeg.windows(5).any(|bytes| bytes == b"JFIF\0"));
+        jpeg
+    }
+
+    fn sample_pdf(width: u32, height: u32) -> Vec<u8> {
         let mut builder =
             PdfBuilder::try_new(PageSize::FitToImage, Orientation::Auto, 0.0, 96.0, 0)
                 .expect("builder");
-        builder.try_add_image(&jpeg).expect("add image");
+        builder
+            .try_add_image(&sample_jpeg(width, height))
+            .expect("add image");
         builder.try_finish().expect("finish")
     }
 
@@ -572,6 +692,38 @@ mod tests {
             inspect_path(&output).expect("inspect output").page_count,
             Some(2)
         );
+    }
+
+    #[test]
+    fn jfif_images_create_a_valid_ordered_pdf() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let first = directory.path().join("wide.jfif");
+        let second = directory.path().join("tall.jfif");
+        let output = directory.path().join("album.pdf");
+        fs::write(&first, sample_jfif(160, 80)).expect("first fixture");
+        fs::write(&second, sample_jfif(80, 160)).expect("second fixture");
+
+        let result = images_to_pdf_impl(ImageToPdfRequest {
+            inputs: vec![
+                first.to_string_lossy().into_owned(),
+                second.to_string_lossy().into_owned(),
+            ],
+            output: output.to_string_lossy().into_owned(),
+            overwrite: false,
+            page_size: "fit".into(),
+            orientation: "auto".into(),
+            margin_mm: 0.0,
+            dpi: 96.0,
+            recompress_quality: 0,
+        })
+        .expect("convert images");
+
+        assert_eq!(result.operation, "image.to_pdf");
+        assert_eq!(result.page_count, 2);
+        let inspection = inspect_path(&output).expect("inspect output");
+        assert_eq!(inspection.page_count, Some(2));
+        assert!(inspection.pages[0].width_pt > inspection.pages[0].height_pt);
+        assert!(inspection.pages[1].height_pt > inspection.pages[1].width_pt);
     }
 
     #[test]

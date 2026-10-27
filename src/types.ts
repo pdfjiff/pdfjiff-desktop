@@ -1,4 +1,4 @@
-export type Tool = "compress" | "merge" | "inspect" | "capabilities";
+export type Tool = "compress" | "merge" | "images" | "inspect" | "capabilities";
 
 export interface PageInfo {
   number: number;
@@ -34,7 +34,7 @@ export interface Capabilities {
 }
 
 export interface OperationResult {
-  operation: "pdf.compress" | "pdf.merge";
+  operation: "pdf.compress" | "pdf.merge" | "image.to_pdf";
   output: string;
   inputBytes: number;
   outputBytes: number;
@@ -48,3 +48,5 @@ export interface OperationResult {
 }
 
 export type Preset = "quality" | "balanced" | "small" | "lossless";
+export type ImagePageSize = "fit" | "a4" | "letter";
+export type ImageOrientation = "auto" | "portrait" | "landscape";

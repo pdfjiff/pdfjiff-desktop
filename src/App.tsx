@@ -12,6 +12,7 @@ import {
   FolderOpen,
   HardDrive,
   Info,
+  Images,
   ListChecks,
   LoaderCircle,
   PackageMinus,
@@ -26,15 +27,19 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   chooseOutput,
+  chooseImages,
   choosePdf,
   choosePdfs,
   compressPdf,
   getCapabilities,
   inspectFile,
+  imagesToPdf,
   mergePdfs,
 } from "./api";
 import type {
   Capabilities,
+  ImageOrientation,
+  ImagePageSize,
   Inspection,
   OperationResult,
   Preset,
@@ -44,6 +49,7 @@ import type {
 const tools: { id: Tool; label: string; icon: typeof PackageMinus }[] = [
   { id: "compress", label: "Compress", icon: PackageMinus },
   { id: "merge", label: "Merge", icon: Combine },
+  { id: "images", label: "Images to PDF", icon: Images },
   { id: "inspect", label: "Inspect", icon: ScanSearch },
   { id: "capabilities", label: "Capabilities", icon: ListChecks },
 ];
@@ -86,6 +92,7 @@ function App() {
         <section className="workspace">
           {tool === "compress" && <CompressPanel />}
           {tool === "merge" && <MergePanel />}
+          {tool === "images" && <ImagesToPdfPanel />}
           {tool === "inspect" && <InspectPanel />}
           {tool === "capabilities" && (
             <CapabilitiesPanel data={capabilities} error={capabilityError} />
@@ -393,6 +400,121 @@ function MergePanel() {
   );
 }
 
+function ImagesToPdfPanel() {
+  const [inputs, setInputs] = useState<string[]>([]);
+  const [output, setOutput] = useState("");
+  const [pageSize, setPageSize] = useState<ImagePageSize>("fit");
+  const [orientation, setOrientation] = useState<ImageOrientation>("auto");
+  const [marginMm, setMarginMm] = useState("0");
+  const [dpi, setDpi] = useState("96");
+  const [quality, setQuality] = useState("0");
+  const [overwrite, setOverwrite] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<OperationResult | null>(null);
+
+  async function addFiles() {
+    const paths = await chooseImages();
+    if (paths.length === 0) return;
+    setError("");
+    setResult(null);
+    const known = new Set(inputs);
+    const next = [...inputs, ...paths.filter((path) => !known.has(path))];
+    setInputs(next);
+    if (!output && next[0]) setOutput(suggestImagePdfOutput(next[0]));
+  }
+
+  function move(index: number, direction: -1 | 1) {
+    const destination = index + direction;
+    if (destination < 0 || destination >= inputs.length) return;
+    const next = [...inputs];
+    [next[index], next[destination]] = [next[destination], next[index]];
+    setInputs(next);
+  }
+
+  async function run() {
+    setBusy(true);
+    setError("");
+    setResult(null);
+    try {
+      const parsedMargin = Number(marginMm);
+      const parsedDpi = Number(dpi);
+      const parsedQuality = Number(quality);
+      if (!Number.isFinite(parsedMargin) || parsedMargin < 0 || parsedMargin > 100) throw new Error("Margin must be between 0 and 100 mm.");
+      if (!Number.isFinite(parsedDpi) || parsedDpi < 18 || parsedDpi > 1200) throw new Error("DPI must be between 18 and 1200.");
+      if (!Number.isInteger(parsedQuality) || parsedQuality < 0 || parsedQuality > 100) throw new Error("Quality must be a whole number from 0 to 100.");
+      setResult(await imagesToPdf({
+        inputs,
+        output,
+        overwrite,
+        pageSize,
+        orientation,
+        marginMm: parsedMargin,
+        dpi: parsedDpi,
+        recompressQuality: parsedQuality,
+      }));
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (result) {
+    return <ResultView title="PDF created" result={result} onReset={() => setResult(null)} />;
+  }
+
+  return (
+    <TaskFrame
+      eyebrow="Ordered image conversion"
+      title="Turn images into a PDF"
+      description="Combine JPG, JPEG, JFIF, PNG and WebP images in the exact order you choose."
+    >
+      {inputs.length === 0 ? (
+        <EmptyDrop icon={Images} title="Choose images" detail="JPG · JPEG · JFIF · PNG · WebP · maximum 256 MiB total" action="Choose images" onClick={() => void addFiles()} busy={busy} />
+      ) : (
+        <div className="task-card">
+          <div className="merge-summary">
+            <span>{inputs.length} {inputs.length === 1 ? "image" : "images"}</span>
+            <button type="button" className="text-button" onClick={() => void addFiles()}>Add images</button>
+          </div>
+          <ol className="merge-list">
+            {inputs.map((path, index) => (
+              <li key={path}>
+                <span className="order-number">{index + 1}</span>
+                <Images size={19} />
+                <span className="merge-file"><strong>{fileName(path)}</strong><small>{path}</small></span>
+                <button type="button" aria-label={`Move ${fileName(path)} up`} disabled={index === 0} onClick={() => move(index, -1)}><ChevronUp size={16} /></button>
+                <button type="button" aria-label={`Move ${fileName(path)} down`} disabled={index === inputs.length - 1} onClick={() => move(index, 1)}><ChevronDown size={16} /></button>
+                <button type="button" aria-label={`Remove ${fileName(path)}`} onClick={() => setInputs(inputs.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button>
+              </li>
+            ))}
+          </ol>
+
+          <div className="settings-grid">
+            <label className="field"><span>Page size</span><select value={pageSize} onChange={(event) => setPageSize(event.target.value as ImagePageSize)}><option value="fit">Fit to each image</option><option value="a4">A4</option><option value="letter">Letter</option></select></label>
+            <label className="field"><span>Orientation</span><select value={orientation} onChange={(event) => setOrientation(event.target.value as ImageOrientation)}><option value="auto">Automatic</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>
+            <label className="field"><span>Margin, mm</span><input inputMode="decimal" value={marginMm} onChange={(event) => setMarginMm(event.target.value)} /></label>
+            <label className="field"><span>DPI</span><input inputMode="numeric" value={dpi} onChange={(event) => setDpi(event.target.value)} /></label>
+            <label className="field"><span>JPEG quality <em>0 keeps originals</em></span><input inputMode="numeric" value={quality} onChange={(event) => setQuality(event.target.value)} /></label>
+          </div>
+
+          <OutputPicker value={output} onClick={async () => {
+            const selected = await chooseOutput(output || "images.pdf");
+            if (selected) setOutput(selected);
+          }} />
+          <label className="check-row"><input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />Replace an existing output with this exact name</label>
+          <ErrorBanner message={error} />
+          <div className="action-row">
+            <span className="supporting"><HardDrive size={15} /> Conversion stays on this device</span>
+            <PrimaryButton busy={busy} disabled={inputs.length === 0 || !output} onClick={() => void run()}>Create PDF</PrimaryButton>
+          </div>
+        </div>
+      )}
+    </TaskFrame>
+  );
+}
+
 function InspectPanel() {
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [busy, setBusy] = useState(false);
@@ -621,6 +743,10 @@ function fileName(path: string): string {
 
 function suggestOutput(path: string, suffix: string): string {
   return path.replace(/\.pdf$/i, "") + suffix;
+}
+
+function suggestImagePdfOutput(path: string): string {
+  return path.replace(/\.(?:jpe?g|jfif|jfi|jif|png|webp)$/i, "") + ".pdf";
 }
 
 export default App;
