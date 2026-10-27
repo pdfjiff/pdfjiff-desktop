@@ -146,7 +146,12 @@ fn capabilities() -> CapabilitiesResponse {
                 "Select, reorder, delete and rotate pages",
                 false,
             ),
-            capability("pdf.to_image", "PDF to images", "Export PDF pages as images", false),
+            capability(
+                "pdf.to_image",
+                "PDF to images",
+                "Export PDF pages as images",
+                false,
+            ),
             capability("ocr", "OCR", "Searchable text for scanned documents", false),
         ],
     }
@@ -606,8 +611,7 @@ mod tests {
         let mut jpeg = sample_jpeg(width, height);
         if !jpeg.windows(5).any(|bytes| bytes == b"JFIF\0") {
             let app0 = [
-                0xff, 0xe0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0,
-                0,
+                0xff, 0xe0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
             ];
             jpeg.splice(2..2, app0);
         }
