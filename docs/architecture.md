@@ -10,7 +10,7 @@ Rust desktop adapter
 version-pinned pdfjiff-core
 ```
 
-The WebView owns presentation only. Rust revalidates every request, reads user-selected files, runs the PDF engine on blocking worker threads, validates results, and publishes outputs atomically. No Node.js runtime ships in the application.
+The WebView owns presentation only. Rust revalidates every request, reads user-selected files, runs PDF and image conversion on blocking worker threads, validates results, and publishes outputs atomically. No Node.js runtime ships in the application.
 
 The initial capability manifest permits core window behavior plus native open/save dialogs. Frontend assets are bundled, CSP blocks remote content, and the application has no telemetry or application-level network feature.
 

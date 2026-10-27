@@ -9,6 +9,7 @@ Fast, private PDF tools for macOS, Windows, and Linux. PDFJiff Desktop processes
 - **Inspect** page geometry, encryption, detected signatures, and document structures.
 - **Compress** with Quality, Balanced, Small, Lossless, or a target file size.
 - **Merge** PDFs in an explicit order with clear warnings when signatures or unsupported structures may be lost.
+- **Images to PDF** turns ordered JPG, JPEG, JFIF, PNG, or WebP images into validated fit, A4, or Letter pages.
 - **Capabilities** reports what the packaged engine implements instead of showing unfinished tools as available.
 
 All writes use a temporary file and publish the result only after PDF validation. Existing files require an explicit overwrite choice. Inputs and outputs are capped to reduce accidental resource exhaustion.
