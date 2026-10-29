@@ -565,7 +565,7 @@ function InspectPanel() {
 
           {inspection.assemblySensitiveFeatures.length > 0 && (
             <div className="structure-panel">
-              <h3><Info size={16} /> Detected structures</h3>
+              <h2><Info size={16} /> Detected structures</h2>
               <div className="tag-list">{inspection.assemblySensitiveFeatures.map((feature) => <span key={feature}>{feature}</span>)}</div>
             </div>
           )}
@@ -611,11 +611,11 @@ function CapabilitiesPanel({ data, error }: { data: Capabilities | null; error: 
               <span>Schema {data.schemaVersion}</span>
               <span>{data.offline ? "Offline" : "Network enabled"}</span>
             </div>
-            <h3 className="section-label">Available</h3>
+            <h2 className="section-label">Available</h2>
             <div className="capability-list">
               {data.available.map((item) => <CapabilityRow key={item.id} available label={item.label} description={item.description} />)}
             </div>
-            <h3 className="section-label">Planned</h3>
+            <h2 className="section-label">Planned</h2>
             <div className="capability-list muted-list">
               {data.planned.map((item) => <CapabilityRow key={item.id} label={item.label} description={item.description} />)}
             </div>
@@ -630,8 +630,8 @@ function TaskFrame({ eyebrow, title, description, children }: { eyebrow: string;
   return (
     <div className="task-frame">
       <div className="task-heading">
-        <span>{eyebrow}</span>
         <h1>{title}</h1>
+        <span>{eyebrow}</span>
         <p>{description}</p>
       </div>
       {children}

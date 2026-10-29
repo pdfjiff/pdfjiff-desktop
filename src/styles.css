@@ -122,9 +122,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 @keyframes arrive { from { opacity: 0; transform: translateY(4px); } }
 
 .task-heading { max-width: 650px; margin: 0 auto 22px; text-align: center; }
-.task-heading > span { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-.task-heading h1 { margin: 7px 0 8px; color: var(--heading); font-family: Georgia, "Times New Roman", serif; font-size: clamp(29px, 4vw, 39px); font-weight: 400; line-height: 1.1; letter-spacing: -.025em; }
-.task-heading p { margin: 0; color: var(--muted-foreground); font-family: Georgia, "Times New Roman", serif; font-size: 15px; line-height: 1.55; }
+.task-heading > span { display: block; margin-top: 9px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.task-heading h1 { margin: 0; color: var(--heading); font-family: Georgia, "Times New Roman", serif; font-size: clamp(29px, 4vw, 39px); font-weight: 400; line-height: 1.1; letter-spacing: -.025em; }
+.task-heading p { margin: 8px 0 0; color: var(--muted-foreground); font-family: Georgia, "Times New Roman", serif; font-size: 15px; line-height: 1.55; }
 
 .task-card, .empty-drop {
   border: 1px solid var(--border);
@@ -197,7 +197,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .metric span { display: block; margin-top: 4px; color: var(--muted-foreground); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
 
 .structure-panel { margin-bottom: 15px; padding: 13px; border-radius: 11px; background: var(--muted); }
-.structure-panel h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 9px; color: var(--secondary-foreground); font-size: 12px; }
+.structure-panel h2 { display: flex; align-items: center; gap: 7px; margin: 0 0 9px; color: var(--secondary-foreground); font-size: 12px; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-list span { padding: 5px 8px; border-radius: 99px; background: var(--card); color: var(--muted-foreground); font-size: 10px; }
 
